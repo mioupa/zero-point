@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nanoindentation Zero Point Tool</title>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css" />
+    <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <py-config type="json">
+      {
+        "packages": ["openpyxl", "xlrd"]
+      }
+    </py-config>
+    <style>
+      :root {
+        --bg: #f3efe6;
+        --panel: rgba(255, 252, 245, 0.92);
+        --panel-strong: #fffaf0;
+        --line: #d7cfc0;
+        --text: #1f2428;
+        --muted: #675f52;
+        --accent: #b04a2b;
+        --accent-2: #1d6f70;
+        --accent-3: #2e4d7b;
+        --warn: #a15d19;
+        --ok: #2d6b3d;
+        --shadow: 0 18px 40px rgba(78, 62, 39, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(176, 74, 43, 0.12), transparent 28%),
+          radial-gradient(circle at top right, rgba(29, 111, 112, 0.12), transparent 26%),
+          linear-gradient(180deg, #f8f3e8 0%, #efe8dc 100%);
+      }
+
+      .page {
+        width: min(1440px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 24px 0 40px;
+      }
+
+      .hero {
+        padding: 8px 4px 16px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 5vw, 3.6rem);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+
+      .hero p {
+        max-width: 920px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .panel {
+        margin-top: 18px;
+        padding: 18px;
+        border: 1px solid rgba(113, 98, 71, 0.12);
+        border-radius: 22px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(8px);
+      }
+
+      .panel h2 {
+        margin: 0 0 14px;
+        font-size: 1rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .field,
+      .metric,
+      .chart-card,
+      .table-wrap {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--panel-strong);
+      }
+
+      .field {
+        padding: 14px;
+      }
+
+      .field label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .field input[type="file"],
+      .field input[type="number"],
+      .field select {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid #cbbfa9;
+        border-radius: 12px;
+        background: #fffdfa;
+        color: var(--text);
+        font: inherit;
+      }
+
+      .field input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent);
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 11px 16px;
+        background: var(--text);
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.14s ease, opacity 0.14s ease, background 0.14s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+      }
+
+      button.secondary {
+        background: #d8cfbf;
+        color: var(--text);
+      }
+
+      button.accent {
+        background: var(--accent);
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .status {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: #f8f4eb;
+        color: var(--muted);
+      }
+
+      .status.info {
+        border-color: rgba(29, 111, 112, 0.2);
+      }
+
+      .status.success {
+        color: var(--ok);
+        border-color: rgba(45, 107, 61, 0.25);
+        background: rgba(45, 107, 61, 0.08);
+      }
+
+      .status.warn {
+        color: var(--warn);
+        border-color: rgba(161, 93, 25, 0.25);
+        background: rgba(161, 93, 25, 0.08);
+      }
+
+      .status.error {
+        color: #952d2d;
+        border-color: rgba(149, 45, 45, 0.25);
+        background: rgba(149, 45, 45, 0.08);
+      }
+
+      .meta {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .metric {
+        padding: 14px;
+      }
+
+      .metric .label {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .metric .value {
+        font-size: 1.12rem;
+        font-weight: 700;
+        line-height: 1.35;
+        word-break: break-word;
+      }
+
+      .app-hidden {
+        display: none;
+      }
+
+      .chart-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .chart-card {
+        padding: 12px;
+      }
+
+      .chart-card.featured {
+        padding: 14px;
+      }
+
+      .chart-title {
+        margin: 0 0 10px;
+        font-size: 0.94rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+
+      .plot {
+        width: 100%;
+        min-height: 340px;
+      }
+
+      .plot.plot-hero {
+        min-height: 540px;
+      }
+
+      .chart-grid.secondary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .table-wrap {
+        overflow: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        font-size: 0.94rem;
+        white-space: nowrap;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        background: #fffaf0;
+        color: var(--muted);
+        font-size: 0.8rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 1080px) {
+        .meta,
+        .chart-grid,
+        .chart-grid.secondary {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .page {
+          width: min(100% - 20px, 1440px);
+        }
+
+        .row {
+          grid-template-columns: 1fr;
+        }
+
+        .controls {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <p class="eyebrow">Nanoindentation Zero Point Correction</p>
+        <h1>Browser Tool</h1>
+        <p>
+          `CSM_0_34.py` と `figfig_0_05.py` の流れをブラウザ上でまとめて扱うための単一 HTML です。
+          `xls` / `xlsx` を読み込み、零点補正、modulus と hardness の再計算、Nix-Gao 指標、各グラフ表示、
+          CSV 出力を行います。
+        </p>
+      </header>
+
+      <section class="panel">
+        <h2>Workbook</h2>
+        <div class="row">
+          <div class="field" style="grid-column: span 8;">
+            <label for="file-input">測定ファイル</label>
+            <input id="file-input" type="file" accept=".xls,.xlsx" />
+          </div>
+          <div class="field" style="grid-column: span 4;">
+            <label>操作</label>
+            <div class="controls">
+              <button id="load-button" class="accent">読み込み</button>
+              <button id="download-summary" class="secondary" disabled>集計 CSV</button>
+            </div>
+          </div>
+        </div>
+        <div id="status" class="status info">PyScript と依存パッケージを準備中です。</div>
+        <div class="meta">
+          <div class="metric">
+            <span class="label">File</span>
+            <span id="meta-file" class="value">未読込</span>
+          </div>
+          <div class="metric">
+            <span class="label">Tip</span>
+            <span id="meta-tip" class="value">-</span>
+          </div>
+          <div class="metric">
+            <span class="label">Tests</span>
+            <span id="meta-tests" class="value">0</span>
+          </div>
+          <div class="metric">
+            <span class="label">Saved Zero</span>
+            <span id="meta-zero-count" class="value">0 / 0</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="app-section" class="panel app-hidden">
+        <h2>Correction</h2>
+        <div class="row">
+          <div class="field" style="grid-column: span 4;">
+            <label for="test-select">Test</label>
+            <select id="test-select"></select>
+          </div>
+          <div class="field" style="grid-column: span 5;">
+            <label for="zero-slider">零点補正量 (nm)</label>
+            <input id="zero-slider" type="range" min="-500" max="4000" step="1" value="0" />
+          </div>
+          <div class="field" style="grid-column: span 3;">
+            <label for="zero-number">数値入力 (nm)</label>
+            <input id="zero-number" type="number" min="-500" max="4000" step="0.1" value="0" />
+          </div>
+        </div>
+        <div class="controls" style="margin-top: 12px;">
+          <button id="prev-test" class="secondary">前の Test</button>
+          <button id="next-test" class="secondary">次の Test</button>
+          <button id="reset-current" class="secondary">現在の補正値を 0 に戻す</button>
+          <button id="download-current" class="accent">現在の Test を CSV 出力</button>
+        </div>
+        <p class="small" style="margin: 12px 2px 0;">
+          スライダまたは数値入力を変更すると、その Test の補正値を即時保存してグラフと集計を更新します。
+        </p>
+      </section>
+
+      <section id="current-section" class="panel app-hidden">
+        <h2>Current Test</h2>
+        <div class="meta" id="current-metrics"></div>
+        <div class="chart-grid" style="margin-top: 14px;">
+          <div class="chart-card featured" style="grid-column: 1 / -1;">
+            <p class="chart-title">HCS - Corrected Depth</p>
+            <div id="plot-hcs" class="plot plot-hero"></div>
+          </div>
+        </div>
+        <div class="chart-grid secondary" style="margin-top: 14px;">
+          <div class="chart-card">
+            <p class="chart-title">Load - Depth</p>
+            <div id="plot-load" class="plot"></div>
+          </div>
+          <div class="chart-card">
+            <p class="chart-title">Modulus - Corrected Depth</p>
+            <div id="plot-modulus" class="plot"></div>
+          </div>
+          <div class="chart-card">
+            <p class="chart-title">Hardness - Corrected Depth</p>
+            <div id="plot-hardness" class="plot"></div>
+          </div>
+        </div>
+        <div class="chart-grid" style="margin-top: 14px;">
+          <div class="chart-card" style="grid-column: 1 / -1;">
+            <p class="chart-title">Nix-Gao</p>
+            <div id="plot-nix" class="plot"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="aggregate-section" class="panel app-hidden">
+        <h2>All Tests</h2>
+        <div class="chart-grid">
+          <div class="chart-card">
+            <p class="chart-title">HCS - Depth</p>
+            <div id="plot-agg-hcs" class="plot"></div>
+          </div>
+          <div class="chart-card">
+            <p class="chart-title">Modulus - Depth</p>
+            <div id="plot-agg-modulus" class="plot"></div>
+          </div>
+          <div class="chart-card">
+            <p class="chart-title">HIT - Depth</p>
+            <div id="plot-agg-hardness" class="plot"></div>
+          </div>
+          <div class="chart-card">
+            <p class="chart-title">Hardness^2 - 1/Depth</p>
+            <div id="plot-agg-nix" class="plot"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="summary-section" class="panel app-hidden">
+        <h2>Summary</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Test</th>
+                <th>Zero (nm)</th>
+                <th>HCS points</th>
+                <th>Modulus points</th>
+                <th>Hardness points</th>
+                <th>Bulk eq. hardness (GPa)</th>
+                <th>h* (nm)</th>
+              </tr>
+            </thead>
+            <tbody id="summary-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__plotViewState = {};
+      window.__plotRenderSeq = 0;
+      window.__plotEventHooked = {};
+
+      window.renderPlotFromJson = (targetId, dataJson, layoutJson) => {
+        const data = JSON.parse(dataJson);
+        const layout = JSON.parse(layoutJson);
+        const preserveViewState = Boolean(layout.meta?.preserveViewState);
+        const viewState = window.__plotViewState[targetId];
+        const currentRevision = Object.prototype.hasOwnProperty.call(layout, "uirevision")
+          ? layout.uirevision
+          : null;
+        const target = document.getElementById(targetId);
+
+        if (preserveViewState && viewState && viewState.uirevision === currentRevision) {
+          layout.xaxis = {
+            ...layout.xaxis,
+            range: viewState.xRange,
+            autorange: false,
+          };
+          layout.yaxis = {
+            ...layout.yaxis,
+            range: viewState.yRange,
+            autorange: false,
+          };
+        }
+
+        const config = {
+          responsive: true,
+          displaylogo: false,
+          modeBarButtonsToRemove: ["lasso2d", "select2d"],
+        };
+        window.__plotRenderSeq += 1;
+        layout.datarevision = window.__plotRenderSeq;
+        Plotly.react(target, data, layout, config).then((gd) => {
+          gd.__preserveViewState = preserveViewState;
+          gd.__currentUirevision = currentRevision;
+
+          const storeCurrentRange = () => {
+            if (!gd.__preserveViewState) {
+              delete window.__plotViewState[targetId];
+              return;
+            }
+            const xRange = gd?._fullLayout?.xaxis?.range;
+            const yRange = gd?._fullLayout?.yaxis?.range;
+            if (!xRange || !yRange) {
+              return;
+            }
+            window.__plotViewState[targetId] = {
+              uirevision: gd.__currentUirevision,
+              xRange: [...xRange],
+              yRange: [...yRange],
+            };
+          };
+
+          if (!window.__plotEventHooked[targetId]) {
+            gd.on("plotly_relayout", (eventData) => {
+              if (!gd.__preserveViewState) {
+                delete window.__plotViewState[targetId];
+                return;
+              }
+
+              if (eventData?.["xaxis.autorange"] || eventData?.["yaxis.autorange"]) {
+                window.requestAnimationFrame(storeCurrentRange);
+                return;
+              }
+
+              const prev = window.__plotViewState[targetId] || {
+                uirevision: gd.__currentUirevision,
+                xRange: gd?._fullLayout?.xaxis?.range ? [...gd._fullLayout.xaxis.range] : undefined,
+                yRange: gd?._fullLayout?.yaxis?.range ? [...gd._fullLayout.yaxis.range] : undefined,
+              };
+
+              window.__plotViewState[targetId] = {
+                uirevision: gd.__currentUirevision,
+                xRange:
+                  eventData?.["xaxis.range[0]"] !== undefined && eventData?.["xaxis.range[1]"] !== undefined
+                    ? [eventData["xaxis.range[0]"], eventData["xaxis.range[1]"]]
+                    : prev.xRange,
+                yRange:
+                  eventData?.["yaxis.range[0]"] !== undefined && eventData?.["yaxis.range[1]"] !== undefined
+                    ? [eventData["yaxis.range[0]"], eventData["yaxis.range[1]"]]
+                    : prev.yRange,
+              };
+            });
+            window.__plotEventHooked[targetId] = true;
+          }
+
+          if (
+            gd.__preserveViewState &&
+            viewState &&
+            viewState.uirevision === gd.__currentUirevision &&
+            viewState.xRange &&
+            viewState.yRange
+          ) {
+            Plotly.relayout(gd, {
+              "xaxis.range": [...viewState.xRange],
+              "yaxis.range": [...viewState.yRange],
+              "xaxis.autorange": false,
+              "yaxis.autorange": false,
+            }).then(() => {
+              storeCurrentRange();
+            });
+          } else {
+            storeCurrentRange();
+          }
+        });
+      };
+
+      window.downloadTextFile = (filename, text) => {
+        const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      };
+    </script>
+
+    <script type="py">
+import csv
+import json
+import math
+import re
+from io import BytesIO, StringIO
+
+from pyscript import document, fetch, when, window
+
+window.pythonAppReady = True
+
+TEST_RE = re.compile(r"^Test\s+\d{3}$")
+THRESHOLD_DEPTH = 200.0
+ZERO_LEFT_RATIO = 0.42
+POISSON_SAMPLE = 0.18
+POISSON_TIP = 0.07
+TIP_MODULUS = 1141.0
+BETA_FACTOR = 1.034
+AREA_COEFS = [21.2922, 2606.91, -42524.5, -81251.5, -19219.0, 79527.2, 156020.0, 204446.0]
+AREA_POWERS = [2.0, 1.0, 0.5, 0.25, 0.125, 1 / 16, 1 / 32, 1 / 64]
+
+STATE = {
+    "filename": None,
+    "tip_name": "",
+    "tests": {},
+    "test_order": [],
+    "zeros": {},
+    "current_test": None,
+}
+
+
+def elem(element_id):
+    return document.getElementById(element_id)
+
+
+def set_status(message, tone="info"):
+    node = elem("status")
+    node.textContent = message
+    node.className = f"status {tone}"
+
+
+def set_text(element_id, value):
+    elem(element_id).textContent = value
+
+
+def safe_float(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            value = float(stripped)
+        except Exception:
+            return None
+    try:
+        value = float(value)
+    except Exception:
+        return None
+    if not math.isfinite(value) or abs(value) > 1e100:
+        return None
+    return value
+
+
+def safe_text(value):
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def fmt(value, digits=4, empty="-"):
+    if value is None or not math.isfinite(value):
+        return empty
+    return f"{value:.{digits}f}"
+
+
+def test_sort_key(name):
+    match = re.search(r"(\d+)$", name)
+    return int(match.group(1)) if match else 0
+
+
+def area_function(contact_depth):
+    if contact_depth is None or contact_depth <= 0:
+        return None
+    total = 0.0
+    try:
+        for coef, power in zip(AREA_COEFS, AREA_POWERS):
+            total += coef * (contact_depth ** power)
+    except Exception:
+        return None
+    if not math.isfinite(total) or total <= 0:
+        return None
+    return total
+
+
+def read_xls_workbook(data):
+    import xlrd
+
+    workbook = xlrd.open_workbook(file_contents=data)
+    tip_name = ""
+    tests = {}
+
+    if "Results" in workbook.sheet_names():
+        sheet = workbook.sheet_by_name("Results")
+        if sheet.nrows >= 3 and sheet.ncols >= 6:
+            tip_name = safe_text(sheet.cell_value(2, 5))
+
+    for name in workbook.sheet_names():
+        if not TEST_RE.match(name):
+            continue
+        sheet = workbook.sheet_by_name(name)
+        rows = []
+        for row_idx in range(2, sheet.nrows):
+            depth = safe_float(sheet.cell_value(row_idx, 1))
+            if depth is None:
+                break
+            rows.append(
+                {
+                    "depth": depth,
+                    "load": safe_float(sheet.cell_value(row_idx, 2)),
+                    "hcs": safe_float(sheet.cell_value(row_idx, 4)),
+                    "source_modulus": safe_float(sheet.cell_value(row_idx, 6)),
+                }
+            )
+        tests[name] = rows
+
+    return tip_name, tests
+
+
+def read_xlsx_workbook(data):
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(BytesIO(data), data_only=True, read_only=True)
+    tip_name = ""
+    tests = {}
+
+    if "Results" in workbook.sheetnames:
+        sheet = workbook["Results"]
+        tip_name = safe_text(sheet["F3"].value)
+
+    for name in workbook.sheetnames:
+        if not TEST_RE.match(name):
+            continue
+        sheet = workbook[name]
+        rows = []
+        for row in sheet.iter_rows(min_row=3, values_only=True):
+            if row is None or len(row) < 5:
+                continue
+            depth = safe_float(row[1])
+            if depth is None:
+                break
+            rows.append(
+                {
+                    "depth": depth,
+                    "load": safe_float(row[2] if len(row) > 2 else None),
+                    "hcs": safe_float(row[4] if len(row) > 4 else None),
+                    "source_modulus": safe_float(row[6] if len(row) > 6 else None),
+                }
+            )
+        tests[name] = rows
+
+    workbook.close()
+    return tip_name, tests
+
+
+def parse_workbook(data, filename):
+    suffix = filename.lower().split(".")[-1]
+    if suffix == "xls":
+        return read_xls_workbook(data)
+    if suffix == "xlsx":
+        return read_xlsx_workbook(data)
+    raise ValueError("`.xls` または `.xlsx` を選択してください。")
+
+
+def analyze_test(rows, zero):
+    load_depth = []
+    load_value = []
+    corrected_depth = []
+    hcs_value = []
+    modulus_depth = []
+    modulus_value = []
+    hardness_depth = []
+    hardness_value = []
+    inv_depth = []
+    hardness_sq = []
+    csv_rows = []
+
+    for row in rows:
+        raw_depth = row["depth"]
+        raw_load = row["load"]
+        raw_hcs = row["hcs"]
+
+        if raw_depth is not None and raw_load is not None:
+            load_depth.append(raw_depth)
+            load_value.append(raw_load)
+
+        if raw_depth is None or raw_hcs is None:
+            continue
+
+        current_depth = raw_depth - zero
+        corrected_depth.append(current_depth)
+        hcs_value.append(raw_hcs)
+
+        modulus = None
+        hardness = None
+        inv_depth_value = None
+        hardness_sq_value = None
+
+        if raw_load is not None and raw_hcs != 0:
+            contact_depth = current_depth - 0.75 * 1.0e6 * raw_load / raw_hcs
+            area = area_function(contact_depth)
+            if area is not None:
+                denominator = (
+                    2 * BETA_FACTOR * math.sqrt(area) / (raw_hcs * math.sqrt(math.pi))
+                    - ((1 - POISSON_TIP * POISSON_TIP) / TIP_MODULUS)
+                )
+                if denominator > 0 and math.isfinite(denominator):
+                    modulus = (1 - POISSON_SAMPLE * POISSON_SAMPLE) / denominator
+                    if math.isfinite(modulus):
+                        modulus_depth.append(current_depth)
+                        modulus_value.append(modulus)
+
+                hardness = raw_load / area * 1.0e6
+                if math.isfinite(hardness):
+                    hardness_depth.append(current_depth)
+                    hardness_value.append(hardness)
+                    if current_depth > THRESHOLD_DEPTH and hardness > 0:
+                        inv_depth_value = 1 / current_depth
+                        hardness_sq_value = hardness * hardness
+                        inv_depth.append(inv_depth_value)
+                        hardness_sq.append(hardness_sq_value)
+
+        csv_rows.append(
+            {
+                "zero": zero,
+                "depth": current_depth,
+                "hcs": raw_hcs,
+                "modulus": modulus,
+                "hardness": hardness,
+                "inv_depth": inv_depth_value,
+                "hardness_sq": hardness_sq_value,
+            }
+        )
+
+    bulk_eq_hardness = None
+    h_star = None
+
+    if len(inv_depth) >= 2:
+        mean_x = sum(inv_depth) / len(inv_depth)
+        mean_y = sum(hardness_sq) / len(hardness_sq)
+        sum_xx = sum((x - mean_x) ** 2 for x in inv_depth)
+        sum_xy = sum((x - mean_x) * (y - mean_y) for x, y in zip(inv_depth, hardness_sq))
+        if sum_xx > 0:
+            slope = sum_xy / sum_xx
+            intercept = mean_y - slope * mean_x
+            if intercept > 0:
+                bulk_eq_hardness = math.sqrt(intercept)
+                h_star = slope / intercept if intercept != 0 else None
+
+    return {
+        "load_depth": load_depth,
+        "load_value": load_value,
+        "corrected_depth": corrected_depth,
+        "hcs_value": hcs_value,
+        "modulus_depth": modulus_depth,
+        "modulus_value": modulus_value,
+        "hardness_depth": hardness_depth,
+        "hardness_value": hardness_value,
+        "inv_depth": inv_depth,
+        "hardness_sq": hardness_sq,
+        "bulk_eq_hardness": bulk_eq_hardness,
+        "h_star": h_star,
+        "csv_rows": csv_rows,
+    }
+
+
+def build_current_csv(test_name, analysis):
+    out = StringIO()
+    writer = csv.writer(out)
+    writer.writerow(
+        [
+            "Length for revising zero point (nm)",
+            "Depth (nm)",
+            "Harmonic contact stiffness (N/m)",
+            "Modulus (GPa)",
+            "Nanoindentation hardness (GPa)",
+            "1/depth (1/nm)",
+            "Hardness^2 (GPa^2)",
+            "Bulk equivalent hardness (GPa)",
+            "Characteristic length of ISE (nm)",
+        ]
+    )
+    rows = analysis["csv_rows"]
+    for idx, row in enumerate(rows):
+        writer.writerow(
+            [
+                row["zero"] if idx == 0 else "",
+                row["depth"],
+                row["hcs"],
+                row["modulus"],
+                row["hardness"],
+                row["inv_depth"],
+                row["hardness_sq"],
+                analysis["bulk_eq_hardness"] if idx == 0 else "",
+                analysis["h_star"] if idx == 0 else "",
+            ]
+        )
+    if not rows:
+        writer.writerow([STATE["zeros"].get(test_name, 0.0)])
+    return out.getvalue()
+
+
+def build_summary_csv():
+    out = StringIO()
+    writer = csv.writer(out)
+    writer.writerow(
+        [
+            "Test",
+            "Zero correction (nm)",
+            "HCS points",
+            "Modulus points",
+            "Hardness points",
+            "Bulk equivalent hardness (GPa)",
+            "Characteristic length of ISE (nm)",
+        ]
+    )
+    for test_name in STATE["test_order"]:
+        analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
+        writer.writerow(
+            [
+                test_name,
+                STATE["zeros"][test_name],
+                len(analysis["corrected_depth"]),
+                len(analysis["modulus_depth"]),
+                len(analysis["hardness_depth"]),
+                analysis["bulk_eq_hardness"],
+                analysis["h_star"],
+            ]
+        )
+    return out.getvalue()
+
+
+def render_plot(target_id, data, layout):
+    window.renderPlotFromJson(target_id, json.dumps(data), json.dumps(layout))
+
+
+def depth_home_range(x_values):
+    finite = [value for value in x_values if value is not None and math.isfinite(value)]
+    if not finite:
+        return [-100.0, 300.0]
+
+    x_min = min(finite)
+    x_max = max(finite)
+    span = max(x_max - x_min, abs(x_max), abs(x_min), 1.0)
+    right = max(x_max + 0.08 * span, 50.0)
+    target_left = -(ZERO_LEFT_RATIO / (1 - ZERO_LEFT_RATIO)) * right
+    left = min(x_min - 0.08 * span, target_left)
+
+    if not math.isfinite(left) or not math.isfinite(right) or left >= right:
+        return [-100.0, max(300.0, right if math.isfinite(right) else 300.0)]
+
+    return [left, right]
+
+
+def base_layout(x_title, y_title, uirevision_key=None, x_range=None, preserve_view_state=False):
+    layout = {
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "#fffdfa",
+        "margin": {"l": 72, "r": 18, "t": 18, "b": 58},
+        "font": {"family": "Hiragino Sans, Yu Gothic, sans-serif", "color": "#1f2428"},
+        "meta": {"preserveViewState": preserve_view_state},
+        "xaxis": {
+            "title": x_title,
+            "gridcolor": "rgba(173, 158, 131, 0.18)",
+            "zerolinecolor": "rgba(173, 158, 131, 0.25)",
+            "range": x_range,
+            "autorange": False if x_range is not None else True,
+        },
+        "yaxis": {
+            "title": y_title,
+            "gridcolor": "rgba(173, 158, 131, 0.18)",
+            "zerolinecolor": "rgba(173, 158, 131, 0.25)",
+        },
+        "legend": {"orientation": "h", "y": 1.12, "x": 0},
+    }
+    if uirevision_key is not None:
+        layout["uirevision"] = uirevision_key
+    return layout
+
+
+def update_meta():
+    test_count = len(STATE["test_order"])
+    saved_count = sum(1 for value in STATE["zeros"].values() if abs(value) > 1e-12)
+    set_text("meta-file", STATE["filename"] or "未読込")
+    set_text("meta-tip", STATE["tip_name"] or "-")
+    set_text("meta-tests", str(test_count))
+    set_text("meta-zero-count", f"{saved_count} / {test_count}")
+
+
+def update_test_select():
+    select = elem("test-select")
+    select.innerHTML = ""
+    for test_name in STATE["test_order"]:
+        option = document.createElement("option")
+        option.value = test_name
+        option.textContent = test_name
+        if test_name == STATE["current_test"]:
+            option.selected = True
+        select.appendChild(option)
+
+
+def update_zero_inputs():
+    if STATE["current_test"] is None:
+        return
+    zero_value = STATE["zeros"][STATE["current_test"]]
+    elem("zero-slider").value = f"{zero_value:.0f}"
+    elem("zero-number").value = f"{zero_value:.4f}"
+
+
+def render_current_metrics(test_name, analysis):
+    metrics = [
+        ("Current Test", test_name),
+        ("Zero Correction", f"{fmt(STATE['zeros'][test_name], 2)} nm"),
+        ("HCS Points", str(len(analysis["corrected_depth"]))),
+        ("Modulus Points", str(len(analysis["modulus_depth"]))),
+        ("Hardness Points", str(len(analysis["hardness_depth"]))),
+        ("Bulk Eq. Hardness", f"{fmt(analysis['bulk_eq_hardness'], 4)} GPa"),
+        ("h*", f"{fmt(analysis['h_star'], 4)} nm"),
+        ("Threshold", f"{fmt(THRESHOLD_DEPTH, 1)} nm"),
+    ]
+    html = []
+    for label, value in metrics:
+        html.append(
+            f'<div class="metric"><span class="label">{label}</span><span class="value">{value}</span></div>'
+        )
+    elem("current-metrics").innerHTML = "".join(html)
+
+
+def render_current_plots():
+    test_name = STATE["current_test"]
+    if test_name is None:
+        return
+
+    analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
+    render_current_metrics(test_name, analysis)
+
+    current_revision = f"{test_name}|current"
+    load_layout = base_layout("Depth (nm)", "Load (mN)")
+    render_plot(
+        "plot-load",
+        [
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": test_name,
+                "x": analysis["load_depth"],
+                "y": analysis["load_value"],
+                "line": {"color": "#1d6f70", "width": 2},
+            }
+        ],
+        load_layout,
+    )
+
+    hcs_data = []
+    current_index = STATE["test_order"].index(test_name)
+    for offset in range(max(0, current_index - 5), current_index):
+        previous_name = STATE["test_order"][offset]
+        previous = analyze_test(STATE["tests"][previous_name], STATE["zeros"][previous_name])
+        hcs_data.append(
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": previous_name,
+                "x": previous["corrected_depth"],
+                "y": previous["hcs_value"],
+                "line": {"color": "rgba(46, 77, 123, 0.25)", "width": 1.4},
+                "hovertemplate": "%{x:.2f} nm<br>%{y:.2f} N/m<extra>" + previous_name + "</extra>",
+            }
+        )
+
+    guide_x = list(range(0, 3501, 50))
+    hcs_data.extend(
+        [
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": "y = 500x",
+                "x": guide_x,
+                "y": [500 * value for value in guide_x],
+                "line": {"color": "rgba(210, 170, 70, 0.45)", "dash": "dot", "width": 1},
+                "hoverinfo": "skip",
+            },
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": "y = 1000x",
+                "x": guide_x,
+                "y": [1000 * value for value in guide_x],
+                "line": {"color": "rgba(210, 170, 70, 0.55)", "dash": "dot", "width": 1},
+                "hoverinfo": "skip",
+            },
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": "y = 2000x",
+                "x": guide_x,
+                "y": [2000 * value for value in guide_x],
+                "line": {"color": "rgba(210, 170, 70, 0.65)", "dash": "dot", "width": 1},
+                "hoverinfo": "skip",
+            },
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": test_name,
+                "x": analysis["corrected_depth"],
+                "y": analysis["hcs_value"],
+                "line": {"color": "#b04a2b", "width": 2.4},
+            },
+        ]
+    )
+    render_plot(
+        "plot-hcs",
+        hcs_data,
+        base_layout(
+            "Corrected Depth (nm)",
+            "HCS (N/m)",
+            "plot-hcs-view",
+            depth_home_range(analysis["corrected_depth"]),
+            True,
+        ),
+    )
+
+    render_plot(
+        "plot-modulus",
+        [
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": test_name,
+                "x": analysis["modulus_depth"],
+                "y": analysis["modulus_value"],
+                "line": {"color": "#2e4d7b", "width": 2},
+            }
+        ],
+        base_layout("Corrected Depth (nm)", "Modulus (GPa)"),
+    )
+
+    render_plot(
+        "plot-hardness",
+        [
+            {
+                "type": "scatter",
+                "mode": "markers",
+                "name": test_name,
+                "x": analysis["hardness_depth"],
+                "y": analysis["hardness_value"],
+                "marker": {"color": "#8c5b16", "size": 6, "opacity": 0.75},
+            }
+        ],
+        base_layout("Corrected Depth (nm)", "Nanoindentation hardness (GPa)"),
+    )
+
+    nix_layout = base_layout("1/Depth (1/nm)", "Hardness^2 (GPa^2)")
+    nix_data = [
+        {
+            "type": "scatter",
+            "mode": "markers",
+            "name": test_name,
+            "x": analysis["inv_depth"],
+            "y": analysis["hardness_sq"],
+            "marker": {"color": "#6b3f8d", "size": 6, "opacity": 0.75},
+        }
+    ]
+    render_plot("plot-nix", nix_data, nix_layout)
+
+
+def render_aggregate_plots():
+    agg_hcs = []
+    agg_modulus = []
+    agg_hardness = []
+    agg_nix = []
+    summary_rows = []
+    agg_hcs_x = []
+    agg_modulus_x = []
+    agg_hardness_x = []
+
+    colors = [
+        "#b04a2b",
+        "#1d6f70",
+        "#2e4d7b",
+        "#8c5b16",
+        "#6b3f8d",
+        "#ac5f76",
+        "#4d7342",
+        "#8b3f31",
+        "#40789b",
+        "#6d4f1c",
+        "#4f5db0",
+        "#6a7a27",
+    ]
+
+    for index, test_name in enumerate(STATE["test_order"]):
+        analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
+        color = colors[index % len(colors)]
+
+        agg_hcs.append(
+            {
+                "type": "scatter",
+                "mode": "markers",
+                "name": test_name,
+                "x": analysis["corrected_depth"],
+                "y": [value / 1000 for value in analysis["hcs_value"]],
+                "marker": {"size": 5, "opacity": 0.65, "color": color},
+            }
+        )
+        agg_hcs_x.extend(analysis["corrected_depth"])
+        agg_modulus.append(
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": test_name,
+                "x": analysis["modulus_depth"],
+                "y": analysis["modulus_value"],
+                "line": {"width": 1.8, "color": color},
+            }
+        )
+        agg_modulus_x.extend(analysis["modulus_depth"])
+        agg_hardness.append(
+            {
+                "type": "scatter",
+                "mode": "markers",
+                "name": test_name,
+                "x": analysis["hardness_depth"],
+                "y": analysis["hardness_value"],
+                "marker": {"size": 5, "opacity": 0.65, "color": color},
+            }
+        )
+        agg_hardness_x.extend(analysis["hardness_depth"])
+        agg_nix.append(
+            {
+                "type": "scatter",
+                "mode": "markers",
+                "name": test_name,
+                "x": analysis["inv_depth"],
+                "y": analysis["hardness_sq"],
+                "marker": {"size": 5, "opacity": 0.65, "color": color},
+            }
+        )
+
+        summary_rows.append(
+            (
+                test_name,
+                STATE["zeros"][test_name],
+                len(analysis["corrected_depth"]),
+                len(analysis["modulus_depth"]),
+                len(analysis["hardness_depth"]),
+                analysis["bulk_eq_hardness"],
+                analysis["h_star"],
+            )
+        )
+
+    render_plot("plot-agg-hcs", agg_hcs, base_layout("Depth (nm)", "HCS (kN/m)"))
+    render_plot("plot-agg-modulus", agg_modulus, base_layout("Depth (nm)", "Modulus (GPa)"))
+    render_plot(
+        "plot-agg-hardness",
+        agg_hardness,
+        base_layout("Depth (nm)", "Nanoindentation hardness (GPa)"),
+    )
+    render_plot("plot-agg-nix", agg_nix, base_layout("1/Depth (1/nm)", "Hardness^2 (GPa^2)"))
+
+    body = elem("summary-body")
+    body.innerHTML = ""
+    for row in summary_rows:
+        tr = document.createElement("tr")
+        tr.innerHTML = (
+            f"<td>{row[0]}</td>"
+            f"<td>{fmt(row[1], 2)}</td>"
+            f"<td>{row[2]}</td>"
+            f"<td>{row[3]}</td>"
+            f"<td>{row[4]}</td>"
+            f"<td>{fmt(row[5], 4)}</td>"
+            f"<td>{fmt(row[6], 4)}</td>"
+        )
+        body.appendChild(tr)
+
+
+def render_everything():
+    update_meta()
+    update_zero_inputs()
+    render_current_plots()
+    render_aggregate_plots()
+
+
+def set_current_test(test_name):
+    STATE["current_test"] = test_name
+    elem("test-select").value = test_name
+    render_everything()
+
+
+def show_app():
+    for section_id in ["app-section", "current-section", "aggregate-section", "summary-section"]:
+        elem(section_id).classList.remove("app-hidden")
+    elem("download-summary").disabled = False
+    elem("download-current").disabled = False
+    elem("prev-test").disabled = False
+    elem("next-test").disabled = False
+    elem("reset-current").disabled = False
+
+
+def update_zero(value):
+    if STATE["current_test"] is None:
+        return
+    STATE["zeros"][STATE["current_test"]] = value
+    render_everything()
+
+
+@when("click", "#load-button")
+async def load_workbook(event):
+    file_input = elem("file-input")
+    if file_input.files.length == 0:
+        set_status("`.xls` または `.xlsx` を選択してください。", "warn")
+        return
+
+    uploaded = file_input.files.item(0)
+    set_status("ワークブックを読み込んでいます。", "info")
+
+    try:
+        blob_url = window.URL.createObjectURL(uploaded)
+        data = bytes(await fetch(blob_url).bytearray())
+        window.URL.revokeObjectURL(blob_url)
+
+        tip_name, tests = parse_workbook(data, uploaded.name)
+        ordered = sorted(tests.keys(), key=test_sort_key)
+        if not ordered:
+            raise ValueError("`Test 001` のようなシートが見つかりませんでした。")
+
+        STATE["filename"] = uploaded.name
+        STATE["tip_name"] = tip_name
+        STATE["tests"] = tests
+        STATE["test_order"] = ordered
+        STATE["zeros"] = {name: 0.0 for name in ordered}
+        STATE["current_test"] = ordered[0]
+
+        update_test_select()
+        show_app()
+        render_everything()
+        set_status(
+            f"{uploaded.name} を読み込みました。{len(ordered)} 件の Test を処理できます。",
+            "success",
+        )
+    except Exception as exc:
+        set_status(f"読み込みに失敗しました: {exc}", "error")
+
+
+@when("change", "#test-select")
+def change_test(event):
+    if not STATE["test_order"]:
+        return
+    set_current_test(event.target.value)
+
+
+@when("input", "#zero-slider")
+def change_zero_slider(event):
+    try:
+        value = float(event.target.value)
+    except Exception:
+        return
+    elem("zero-number").value = f"{value:.4f}"
+    update_zero(value)
+
+
+@when("change", "#zero-number")
+def change_zero_number(event):
+    try:
+        value = float(event.target.value)
+    except Exception:
+        return
+    value = max(-500.0, min(4000.0, value))
+    elem("zero-slider").value = f"{round(value):.0f}"
+    elem("zero-number").value = f"{value:.4f}"
+    update_zero(value)
+
+
+@when("click", "#prev-test")
+def prev_test(event):
+    if STATE["current_test"] is None:
+        return
+    index = STATE["test_order"].index(STATE["current_test"])
+    if index > 0:
+        set_current_test(STATE["test_order"][index - 1])
+
+
+@when("click", "#next-test")
+def next_test(event):
+    if STATE["current_test"] is None:
+        return
+    index = STATE["test_order"].index(STATE["current_test"])
+    if index < len(STATE["test_order"]) - 1:
+        set_current_test(STATE["test_order"][index + 1])
+
+
+@when("click", "#reset-current")
+def reset_current(event):
+    if STATE["current_test"] is None:
+        return
+    STATE["zeros"][STATE["current_test"]] = 0.0
+    render_everything()
+
+
+@when("click", "#download-current")
+def download_current(event):
+    if STATE["current_test"] is None:
+        return
+    test_name = STATE["current_test"]
+    analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
+    filename = f"zero-point_correction_{test_sort_key(test_name)}.csv"
+    window.downloadTextFile(filename, build_current_csv(test_name, analysis))
+
+
+@when("click", "#download-summary")
+def download_summary(event):
+    if not STATE["test_order"]:
+        return
+    base_name = STATE["filename"].rsplit(".", 1)[0] if STATE["filename"] else "summary"
+    window.downloadTextFile(f"{base_name}_summary.csv", build_summary_csv())
+
+
+set_status("準備完了です。測定ファイルを選んで読み込んでください。", "success")
+    </script>
+  </body>
+</html>
