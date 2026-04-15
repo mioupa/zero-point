@@ -1040,31 +1040,7 @@ def render_current_metrics(test_name, analysis):
     elem("current-metrics").innerHTML = "".join(html)
 
 
-def render_current_plots():
-    test_name = STATE["current_test"]
-    if test_name is None:
-        return
-
-    analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
-    render_current_metrics(test_name, analysis)
-
-    current_revision = f"{test_name}|current"
-    load_layout = base_layout("Depth (nm)", "Load (mN)")
-    render_plot(
-        "plot-load",
-        [
-            {
-                "type": "scatter",
-                "mode": "lines",
-                "name": test_name,
-                "x": analysis["load_depth"],
-                "y": analysis["load_value"],
-                "line": {"color": "#1d6f70", "width": 2},
-            }
-        ],
-        load_layout,
-    )
-
+def render_current_hcs_plot(test_name, analysis):
     hcs_data = []
     current_index = STATE["test_order"].index(test_name)
     for offset in range(max(0, current_index - 5), current_index):
@@ -1134,38 +1110,137 @@ def render_current_plots():
         ),
     )
 
-    render_plot(
-        "plot-modulus",
-        [
+
+def render_current_hcs_live():
+    test_name = STATE["current_test"]
+    if test_name is None:
+        return
+    analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
+    render_current_hcs_plot(test_name, analysis)
+
+
+def render_current_plots():
+    test_name = STATE["current_test"]
+    if test_name is None:
+        return
+
+    analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
+    render_current_metrics(test_name, analysis)
+    current_index = STATE["test_order"].index(test_name)
+    previous_names = STATE["test_order"][max(0, current_index - 5) : current_index]
+
+    current_revision = f"{test_name}|current"
+    load_layout = base_layout("Depth (nm)", "Load (mN)")
+    load_data = []
+    for previous_name in previous_names:
+        previous = analyze_test(STATE["tests"][previous_name], STATE["zeros"][previous_name])
+        load_data.append(
             {
                 "type": "scatter",
                 "mode": "lines",
-                "name": test_name,
-                "x": analysis["modulus_depth"],
-                "y": analysis["modulus_value"],
-                "line": {"color": "#2e4d7b", "width": 2},
+                "name": previous_name,
+                "x": previous["load_depth"],
+                "y": previous["load_value"],
+                "line": {"color": "rgba(29, 111, 112, 0.22)", "width": 1.3},
+                "hovertemplate": "%{x:.2f} nm<br>%{y:.4f} mN<extra>" + previous_name + "</extra>",
             }
-        ],
+        )
+    load_data.append(
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": test_name,
+            "x": analysis["load_depth"],
+            "y": analysis["load_value"],
+            "line": {"color": "#1d6f70", "width": 2},
+        }
+    )
+    render_plot(
+        "plot-load",
+        load_data,
+        load_layout,
+    )
+
+    render_current_hcs_plot(test_name, analysis)
+
+    modulus_data = []
+    for previous_name in previous_names:
+        previous = analyze_test(STATE["tests"][previous_name], STATE["zeros"][previous_name])
+        modulus_data.append(
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": previous_name,
+                "x": previous["modulus_depth"],
+                "y": previous["modulus_value"],
+                "line": {"color": "rgba(46, 77, 123, 0.22)", "width": 1.3},
+                "hovertemplate": "%{x:.2f} nm<br>%{y:.2f} GPa<extra>" + previous_name + "</extra>",
+            }
+        )
+    modulus_data.append(
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": test_name,
+            "x": analysis["modulus_depth"],
+            "y": analysis["modulus_value"],
+            "line": {"color": "#2e4d7b", "width": 2},
+        }
+    )
+    render_plot(
+        "plot-modulus",
+        modulus_data,
         base_layout("Corrected Depth (nm)", "Modulus (GPa)"),
     )
 
-    render_plot(
-        "plot-hardness",
-        [
+    hardness_data = []
+    for previous_name in previous_names:
+        previous = analyze_test(STATE["tests"][previous_name], STATE["zeros"][previous_name])
+        hardness_data.append(
             {
                 "type": "scatter",
                 "mode": "markers",
-                "name": test_name,
-                "x": analysis["hardness_depth"],
-                "y": analysis["hardness_value"],
-                "marker": {"color": "#8c5b16", "size": 6, "opacity": 0.75},
+                "name": previous_name,
+                "x": previous["hardness_depth"],
+                "y": previous["hardness_value"],
+                "marker": {"color": "rgba(140, 91, 22, 0.25)", "size": 5, "opacity": 1.0},
+                "hovertemplate": "%{x:.2f} nm<br>%{y:.2f} GPa<extra>" + previous_name + "</extra>",
             }
-        ],
+        )
+    hardness_data.append(
+        {
+            "type": "scatter",
+            "mode": "markers",
+            "name": test_name,
+            "x": analysis["hardness_depth"],
+            "y": analysis["hardness_value"],
+            "marker": {"color": "#8c5b16", "size": 6, "opacity": 0.75},
+        }
+    )
+    render_plot(
+        "plot-hardness",
+        hardness_data,
         base_layout("Corrected Depth (nm)", "Nanoindentation hardness (GPa)"),
     )
 
     nix_layout = base_layout("1/Depth (1/nm)", "Hardness^2 (GPa^2)")
-    nix_data = [
+    nix_data = []
+    for previous_name in previous_names:
+        previous = analyze_test(STATE["tests"][previous_name], STATE["zeros"][previous_name])
+        nix_data.append(
+            {
+                "type": "scatter",
+                "mode": "markers",
+                "name": previous_name,
+                "x": previous["inv_depth"],
+                "y": previous["hardness_sq"],
+                "marker": {"color": "rgba(107, 63, 141, 0.25)", "size": 5, "opacity": 1.0},
+                "hovertemplate": "%{x:.4f} 1/nm<br>%{y:.2f} GPa^2<extra>"
+                + previous_name
+                + "</extra>",
+            }
+        )
+    nix_data.append(
         {
             "type": "scatter",
             "mode": "markers",
@@ -1174,7 +1249,7 @@ def render_current_plots():
             "y": analysis["hardness_sq"],
             "marker": {"color": "#6b3f8d", "size": 6, "opacity": 0.75},
         }
-    ]
+    )
     render_plot("plot-nix", nix_data, nix_layout)
 
 
@@ -1311,10 +1386,13 @@ def show_app():
     elem("reset-current").disabled = False
 
 
-def update_zero(value):
+def update_zero(value, live_hcs_only=False):
     if STATE["current_test"] is None:
         return
     STATE["zeros"][STATE["current_test"]] = value
+    if live_hcs_only:
+        render_current_hcs_live()
+        return
     render_everything()
 
 
@@ -1370,7 +1448,17 @@ def change_zero_slider(event):
     except Exception:
         return
     elem("zero-number").value = f"{value:.4f}"
-    update_zero(value)
+    update_zero(value, True)
+
+
+@when("change", "#zero-slider")
+def commit_zero_slider(event):
+    try:
+        value = float(event.target.value)
+    except Exception:
+        return
+    elem("zero-number").value = f"{value:.4f}"
+    update_zero(value, True)
 
 
 @when("change", "#zero-number")
@@ -1382,7 +1470,7 @@ def change_zero_number(event):
     value = max(-500.0, min(4000.0, value))
     elem("zero-slider").value = f"{round(value):.0f}"
     elem("zero-number").value = f"{value:.4f}"
-    update_zero(value)
+    update_zero(value, True)
 
 
 @when("click", "#prev-test")
