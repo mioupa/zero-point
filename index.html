@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Nanoindentation Zero Point Tool</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap"
+    />
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css" />
     <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
@@ -36,7 +42,7 @@
         margin: 0;
         min-height: 100vh;
         color: var(--text);
-        font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+        font-family: "Noto Sans JP", "Noto Sans", sans-serif;
         background:
           radial-gradient(circle at top left, rgba(176, 74, 43, 0.12), transparent 28%),
           radial-gradient(circle at top right, rgba(29, 111, 112, 0.12), transparent 26%),
@@ -1117,7 +1123,7 @@ def base_layout(x_title, y_title, uirevision_key=None, x_range=None, preserve_vi
         "paper_bgcolor": "rgba(0,0,0,0)",
         "plot_bgcolor": "#fffdfa",
         "margin": {"l": 72, "r": 18, "t": 18, "b": 58},
-        "font": {"family": "Hiragino Sans, Yu Gothic, sans-serif", "color": "#1f2428"},
+        "font": {"family": "Noto Sans JP, Noto Sans, sans-serif", "color": "#1f2428"},
         "meta": {"preserveViewState": preserve_view_state},
         "xaxis": {
             "title": x_title,
