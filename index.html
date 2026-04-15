@@ -332,13 +332,7 @@
   <body>
     <div class="page">
       <header class="hero">
-        <p class="eyebrow">Nanoindentation Zero Point Correction</p>
-        <h1>Browser Tool</h1>
-        <p>
-          `CSM_0_34.py` と `figfig_0_05.py` の流れをブラウザ上でまとめて扱うための単一 HTML です。
-          `xls` / `xlsx` を読み込み、零点補正、modulus と hardness の再計算、Nix-Gao 指標、各グラフ表示、
-          CSV 出力を行います。
-        </p>
+        <h1>CSM Browser Tool</h1>
       </header>
 
       <section class="panel">
@@ -353,6 +347,10 @@
             <div class="controls">
               <button id="load-button" class="accent">読み込み</button>
               <button id="download-summary" class="secondary" disabled>集計 CSV</button>
+              <button id="download-modulus" class="secondary" disabled>Modulus CSV</button>
+              <button id="download-hardness" class="secondary" disabled>Hardness CSV</button>
+              <button id="download-nix" class="secondary" disabled>Nix-Gao CSV</button>
+              <button id="download-all" class="secondary" disabled>全結果 ZIP</button>
             </div>
           </div>
         </div>
@@ -400,7 +398,7 @@
           <button id="download-current" class="accent">現在の Test を CSV 出力</button>
         </div>
         <p class="small" style="margin: 12px 2px 0;">
-          スライダまたは数値入力を変更すると、その Test の補正値を即時保存してグラフと集計を更新します。
+          スライダまたは数値入力を変更すると補正値を保存し、HCS グラフのみ即時更新します。ほかの表示は Test 切替時に更新されます。
         </p>
       </section>
 
@@ -599,6 +597,27 @@
         link.remove();
         URL.revokeObjectURL(url);
       };
+
+      window.downloadBase64File = (filename, base64Text, mimeType) => {
+        const bytes = Uint8Array.from(atob(base64Text), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      };
+
+      window.exportPlotPng = async (targetId, width = 1200, height = 700, scale = 2) => {
+        const gd = document.getElementById(targetId);
+        if (!gd || !gd.data || gd.data.length === 0) {
+          return null;
+        }
+        return await Plotly.toImage(gd, { format: "png", width, height, scale });
+      };
     </script>
 
     <script type="py">
@@ -606,6 +625,8 @@ import csv
 import json
 import math
 import re
+import base64
+import zipfile
 from io import BytesIO, StringIO
 
 from pyscript import document, fetch, when, window
@@ -672,6 +693,11 @@ def safe_text(value):
     return str(value).strip()
 
 
+def normalize_header(value):
+    text = safe_text(value).lower()
+    return re.sub(r"[\s_\-\(\)\[\]/]+", "", text)
+
+
 def fmt(value, digits=4, empty="-"):
     if value is None or not math.isfinite(value):
         return empty
@@ -697,6 +723,27 @@ def area_function(contact_depth):
     return total
 
 
+def detect_column_indices(header_cells):
+    fallback = {"depth": 1, "load": 2, "hcs": 4, "source_modulus": 6}
+    mapping = dict(fallback)
+    for idx, raw in enumerate(header_cells):
+        key = normalize_header(raw)
+        if not key:
+            continue
+        if "depth" in key and "corrected" not in key:
+            mapping["depth"] = idx
+            continue
+        if "load" in key:
+            mapping["load"] = idx
+            continue
+        if "harmoniccontactstiffness" in key or key in ("hcs", "stiffness"):
+            mapping["hcs"] = idx
+            continue
+        if "modulus" in key:
+            mapping["source_modulus"] = idx
+    return mapping
+
+
 def read_xls_workbook(data):
     import xlrd
 
@@ -713,17 +760,19 @@ def read_xls_workbook(data):
         if not TEST_RE.match(name):
             continue
         sheet = workbook.sheet_by_name(name)
+        header_cells = [sheet.cell_value(1, col) for col in range(sheet.ncols)] if sheet.nrows >= 2 else []
+        cols = detect_column_indices(header_cells)
         rows = []
         for row_idx in range(2, sheet.nrows):
-            depth = safe_float(sheet.cell_value(row_idx, 1))
+            depth = safe_float(sheet.cell_value(row_idx, cols["depth"]))
             if depth is None:
                 break
             rows.append(
                 {
                     "depth": depth,
-                    "load": safe_float(sheet.cell_value(row_idx, 2)),
-                    "hcs": safe_float(sheet.cell_value(row_idx, 4)),
-                    "source_modulus": safe_float(sheet.cell_value(row_idx, 6)),
+                    "load": safe_float(sheet.cell_value(row_idx, cols["load"])),
+                    "hcs": safe_float(sheet.cell_value(row_idx, cols["hcs"])),
+                    "source_modulus": safe_float(sheet.cell_value(row_idx, cols["source_modulus"])),
                 }
             )
         tests[name] = rows
@@ -746,19 +795,28 @@ def read_xlsx_workbook(data):
         if not TEST_RE.match(name):
             continue
         sheet = workbook[name]
+        header_row = None
+        for row in sheet.iter_rows(min_row=2, max_row=2, values_only=True):
+            header_row = list(row) if row is not None else []
+            break
+        cols = detect_column_indices(header_row or [])
         rows = []
         for row in sheet.iter_rows(min_row=3, values_only=True):
-            if row is None or len(row) < 5:
+            if row is None:
                 continue
-            depth = safe_float(row[1])
+            depth_idx = cols["depth"]
+            load_idx = cols["load"]
+            hcs_idx = cols["hcs"]
+            src_mod_idx = cols["source_modulus"]
+            depth = safe_float(row[depth_idx] if len(row) > depth_idx else None)
             if depth is None:
                 break
             rows.append(
                 {
                     "depth": depth,
-                    "load": safe_float(row[2] if len(row) > 2 else None),
-                    "hcs": safe_float(row[4] if len(row) > 4 else None),
-                    "source_modulus": safe_float(row[6] if len(row) > 6 else None),
+                    "load": safe_float(row[load_idx] if len(row) > load_idx else None),
+                    "hcs": safe_float(row[hcs_idx] if len(row) > hcs_idx else None),
+                    "source_modulus": safe_float(row[src_mod_idx] if len(row) > src_mod_idx else None),
                 }
             )
         tests[name] = rows
@@ -941,6 +999,94 @@ def build_summary_csv():
                 analysis["h_star"],
             ]
         )
+    return out.getvalue()
+
+
+def build_raw_data_csv():
+    out = StringIO()
+    writer = csv.writer(out)
+    writer.writerow(
+        [
+            "Test",
+            "Index",
+            "Raw depth (nm)",
+            "Raw load (mN)",
+            "Raw harmonic contact stiffness (N/m)",
+            "Raw source modulus",
+            "Zero correction (nm)",
+            "Corrected depth (nm)",
+        ]
+    )
+    for test_name in STATE["test_order"]:
+        zero = STATE["zeros"][test_name]
+        rows = STATE["tests"][test_name]
+        for idx, row in enumerate(rows, start=1):
+            raw_depth = row["depth"]
+            corrected_depth = raw_depth - zero if raw_depth is not None else None
+            writer.writerow(
+                [
+                    test_name,
+                    idx,
+                    raw_depth,
+                    row["load"],
+                    row["hcs"],
+                    row["source_modulus"],
+                    zero,
+                    corrected_depth,
+                ]
+            )
+    return out.getvalue()
+
+
+def build_wide_metric_csv(kind):
+    if kind == "modulus":
+        x_key = "modulus_depth"
+        y_key = "modulus_value"
+        x_label = "Depth (nm)"
+        y_label = "Modulus (GPa)"
+    elif kind == "hardness":
+        x_key = "hardness_depth"
+        y_key = "hardness_value"
+        x_label = "Depth (nm)"
+        y_label = "Nanoindentation hardness (GPa)"
+    elif kind == "nix":
+        x_key = "inv_depth"
+        y_key = "hardness_sq"
+        x_label = "1/depth (1/nm)"
+        y_label = "Hardness^2 (GPa^2)"
+    else:
+        raise ValueError(f"unknown metric kind: {kind}")
+
+    series = []
+    max_len = 0
+    for test_name in STATE["test_order"]:
+        analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
+        x_vals = analysis[x_key]
+        y_vals = analysis[y_key]
+        length = min(len(x_vals), len(y_vals))
+        series.append((test_name, x_vals[:length], y_vals[:length]))
+        if length > max_len:
+            max_len = length
+
+    out = StringIO()
+    writer = csv.writer(out)
+
+    header_tests = []
+    header_axes = []
+    for test_name, _, _ in series:
+        header_tests.extend([test_name, ""])
+        header_axes.extend([x_label, y_label])
+    writer.writerow(header_tests)
+    writer.writerow(header_axes)
+
+    for row_idx in range(max_len):
+        row = []
+        for _, x_vals, y_vals in series:
+            if row_idx < len(x_vals):
+                row.extend([x_vals[row_idx], y_vals[row_idx]])
+            else:
+                row.extend(["", ""])
+        writer.writerow(row)
     return out.getvalue()
 
 
@@ -1380,6 +1526,10 @@ def show_app():
     for section_id in ["app-section", "current-section", "aggregate-section", "summary-section"]:
         elem(section_id).classList.remove("app-hidden")
     elem("download-summary").disabled = False
+    elem("download-modulus").disabled = False
+    elem("download-hardness").disabled = False
+    elem("download-nix").disabled = False
+    elem("download-all").disabled = False
     elem("download-current").disabled = False
     elem("prev-test").disabled = False
     elem("next-test").disabled = False
@@ -1515,6 +1665,84 @@ def download_summary(event):
         return
     base_name = STATE["filename"].rsplit(".", 1)[0] if STATE["filename"] else "summary"
     window.downloadTextFile(f"{base_name}_summary.csv", build_summary_csv())
+
+
+@when("click", "#download-modulus")
+def download_modulus_csv(event):
+    if not STATE["test_order"]:
+        return
+    base_name = STATE["filename"].rsplit(".", 1)[0] if STATE["filename"] else "summary"
+    window.downloadTextFile(f"{base_name}_modulus_wide.csv", build_wide_metric_csv("modulus"))
+
+
+@when("click", "#download-hardness")
+def download_hardness_csv(event):
+    if not STATE["test_order"]:
+        return
+    base_name = STATE["filename"].rsplit(".", 1)[0] if STATE["filename"] else "summary"
+    window.downloadTextFile(f"{base_name}_hardness_wide.csv", build_wide_metric_csv("hardness"))
+
+
+@when("click", "#download-nix")
+def download_nix_csv(event):
+    if not STATE["test_order"]:
+        return
+    base_name = STATE["filename"].rsplit(".", 1)[0] if STATE["filename"] else "summary"
+    window.downloadTextFile(f"{base_name}_nix_gao_wide.csv", build_wide_metric_csv("nix"))
+
+
+async def export_plot_png_bytes(target_id):
+    data_url = await window.exportPlotPng(target_id)
+    if data_url is None:
+        return None
+    marker = "base64,"
+    pos = data_url.find(marker)
+    if pos < 0:
+        return None
+    return base64.b64decode(data_url[pos + len(marker) :])
+
+
+@when("click", "#download-all")
+async def download_all_outputs(event):
+    if not STATE["test_order"]:
+        return
+
+    base_name = STATE["filename"].rsplit(".", 1)[0] if STATE["filename"] else "summary"
+    set_status("全結果 ZIP を作成しています。", "info")
+
+    try:
+        png_targets = [
+            ("plot-modulus", "current_modulus_corrected_depth.png"),
+            ("plot-hardness", "current_hardness_corrected_depth.png"),
+            ("plot-nix", "current_nix_gao.png"),
+            ("plot-agg-modulus", "alltests_modulus_corrected_depth.png"),
+            ("plot-agg-hardness", "alltests_hardness_corrected_depth.png"),
+            ("plot-agg-nix", "alltests_nix_gao.png"),
+        ]
+
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(f"{base_name}_summary.csv", build_summary_csv())
+            archive.writestr(f"{base_name}_raw_data.csv", build_raw_data_csv())
+            archive.writestr(f"{base_name}_modulus_wide.csv", build_wide_metric_csv("modulus"))
+            archive.writestr(f"{base_name}_hardness_wide.csv", build_wide_metric_csv("hardness"))
+            archive.writestr(f"{base_name}_nix_gao_wide.csv", build_wide_metric_csv("nix"))
+
+            for test_name in STATE["test_order"]:
+                analysis = analyze_test(STATE["tests"][test_name], STATE["zeros"][test_name])
+                csv_name = f"zero-point_correction_{test_sort_key(test_name)}.csv"
+                archive.writestr(csv_name, build_current_csv(test_name, analysis))
+
+            for target_id, filename in png_targets:
+                png_bytes = await export_plot_png_bytes(target_id)
+                if png_bytes is not None:
+                    archive.writestr(filename, png_bytes)
+
+        zip_base64 = base64.b64encode(zip_buffer.getvalue()).decode("ascii")
+        window.downloadBase64File(f"{base_name}_all_outputs.zip", zip_base64, "application/zip")
+        set_status("全結果 ZIP を出力しました。", "success")
+    except Exception as exc:
+        set_status(f"ZIP 出力に失敗しました: {exc}", "error")
 
 
 set_status("準備完了です。測定ファイルを選んで読み込んでください。", "success")
